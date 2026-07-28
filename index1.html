@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Sport Analyst</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --card-bg: #1e1e1e;
+            --accent: #00e676; /* Sportowa zieleń */
+            --text: #e0e0e0;
+            --text-muted: #a0a0a0;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+
+        /* Panel Ustawień */
+        #settings { background: var(--card-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; border-left: 4px solid var(--accent); }
+        .settings-toggle { cursor: pointer; color: var(--accent); font-weight: bold; margin-bottom: 10px; display: block; }
+        input { width: 100%; padding: 10px; margin: 5px 0 15px; background: #333; border: none; color: white; border-radius: 4px; box-sizing: border-box; }
+
+        /* Interfejs Główny */
+        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+        .match-card { background: var(--card-bg); padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        button { background: var(--accent); color: #000; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:disabled { opacity: 0.5; }
+
+        /* Analiza */
+        #analysis-result { background: #252525; padding: 15px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; display: none; border: 1px solid var(--accent); }
+        .loading { color: var(--accent); font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚽ AI Sport Analyst</h1>
+    
+    <span class="settings-toggle" onclick="toggleSettings()">⚙️ Ustawienia API</span>
+    <div id="settings">
+        <label>Gemini API Key</label>
+        <input type="password" id="geminiKey" placeholder="Wklej klucz z Google AI Studio">
+        <label>Football-Data API Key</label>
+        <input type="password" id="sportKey" placeholder="Wklej klucz z football-data.org">
+    </div>
+
+    <div class="controls">
+        <input type="date" id="matchDate" onchange="fetchMatches()">
+    </div>
+
+    <div id="matches-list">Wybierz datę, aby załadować mecze...</div>
+    <div id="analysis-result"></div>
+</div>
+
+<script>
+    function toggleSettings() {
+        const s = document.getElementById('settings');
+        s.style.display = s.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function fetchMatches() {
+        const date = document.getElementById('matchDate').value;
+        const key = document.getElementById('sportKey').value;
+        if (!date || !key) return;
+
+        const list = document.getElementById('matches-list');
+        list.innerHTML = 'Ładowanie meczów...';
+
+        try {
+            // Uwaga: Plan darmowy w football-data.org może mieć ograniczenia co do liczby lig.
+            const response = await fetch(`https://api.football-data.org/v4/matches?dateFrom=${date}&dateTo=${date}`, {
+                headers: { 'X-Auth-Token': key }
+            });
+            const data = await response.json();
+            
+            list.innerHTML = '';
+            data.matches.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'match-card';
+                card.innerHTML = `
+                    <div><strong>${m.homeTeam.shortName} vs ${m.awayTeam.shortName}</strong><br><small>${m.competition.name}</small></div>
+                    <button onclick="analyzeMatch('${m.homeTeam.name} vs ${m.awayTeam.name}', '${m.competition.name}')">Analiza AI</button>
+                `;
+                list.appendChild(card);
+            });
+        } catch (e) {
+            list.innerHTML = 'Błąd pobierania meczów. Sprawdź klucz API.';
+        }
+    }
+
+    async function analyzeMatch(matchName, league) {
+        const geminiKey = document.getElementById('geminiKey').value;
+        const resultDiv = document.getElementById('analysis-result');
+        
+        if (!geminiKey) { alert('Wpisz klucz Gemini w ustawieniach!'); return; }
+        
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<span class="loading">Analizuję mecz...</span>';
+
+        const prompt = `Jesteś profesjonalnym analitykiem bukmacherskim. Twoim zadaniem jest analiza meczu ${matchName} w lidze ${league}. 
+        Skup się na: 
+        1. Strzelcach goli (kto i dlaczego trafi). 
+        2. Strzałach celnych (analiza prawdopodobieństwa over 0.5/1.5 dla kluczowych graczy). 
+        3. Dynamice meczu i czasie goli. 
+        4. Podaj 3 konkretne, profesjonalne typy bukmacherskie wraz z uzasadnieniem statystycznym. 
+        Pisz konkretnie, używaj punktorów, pomiń ostrzeżenia o ryzyku hazardowym.`;
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const data = await response.json();
+            resultDiv.innerText = data.candidates[0].content.parts[0].text;
+        } catch (e) {
+            resultDiv.innerText = 'Błąd połączenia z AI. Sprawdź klucz Gemini.';
+        }
+    }
+</script>
+
+</body>
+</html>
